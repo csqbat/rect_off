@@ -67,33 +67,35 @@ int8_t read_minimum_snap_para(void)
     return 0;
 }
 
-Eigen::Vector3d rect_position(ros::Duration time, float period, float length, float width)
+Eigen::Vector3d rect_position(Eigen::Vector3f OriginPoint, ros::Duration time, float period, float length, float width)
 {
     static Eigen::Vector3d rect_pos;
     static uint8_t rect_step = 0;
     double delta_length = length / period; // the function iteration 250hZ
     double delta_width = width / period;   // the function iteration 250hZ
 
+    rect_pos = OriginPoint.cast<double>();
+
     switch (rect_step)
     {
     case 0:
         rect_pos += delta_length / 250 * Eigen::Vector3d(1, 0, 0);
-        if (rect_pos(0) > length)
+        if (rect_pos(0) > length + OriginPoint(0))
             rect_step = 1;
         break;
     case 1:
         rect_pos += delta_width / 250 * Eigen::Vector3d(0, 1, 0);
-        if (rect_pos(1) > width)
+        if (rect_pos(1) > width + OriginPoint(1))
             rect_step = 2;
         break;
     case 2:
         rect_pos -= delta_length / 250 * Eigen::Vector3d(1, 0, 0);
-        if (rect_pos(0) < 0)
+        if (rect_pos(0) < 0 + OriginPoint(0))
             rect_step = 3;
         break;
     case 3:
         rect_pos -= delta_width / 250 * Eigen::Vector3d(0, 1, 0);
-        if (rect_pos(1) < 0)
+        if (rect_pos(1) < 0 + OriginPoint(1))
             rect_step = 0;
         break;
     }
@@ -116,13 +118,15 @@ int main(int argc, char **argv)
     ros::Publisher local_thrust_pub = nh.advertise<mavros_msgs::AttitudeTarget>("mavros/setpointraw_attitude", 10);
     ros::Subscriber local_pos_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, local_pos_cb);
     ros::Subscriber local_vel_sub = nh.subscribe<geometry_msgs::TwistStamped>("mavros/local_position/velocity_local", 10, local_vel_cb);
-    float period, length, width;
+    float period, length, width,origin_x,origin_y;
     nh.param<float>("/period", period, 10);
     nh.param<float>("/length", length, 2);
     nh.param<float>("/width", width, 2);
+    nh.param<float>("/origin_x",origin_x,2);
+    nh.param<float>("/origin_y",origin_y,2);
     //the setpoint publishing rate MUST be faster than 2Hz
     ros::Rate rate(250.0); //100hz
-
+    Eigen::Vector3f OriginPoint(origin_x,origin_y,1); //set the origin_z default as 1m height
     // wait for FCU connection
     while (ros::ok() && !current_state.connected)
     {
@@ -167,7 +171,7 @@ int main(int argc, char **argv)
             {
                 code_step = 0;
                 ros::Duration time_t = ros::Time::now() - Circle_begin_t;
-                rect_pos = rect_position(time_t, period, length, width);
+                rect_pos = rect_position(OriginPoint,time_t, period, length, width);
                 pose.pose.position.x = rect_pos(0);
                 pose.pose.position.y = rect_pos(1);
                 // pose.pose.position.z = rect_pos(2);
